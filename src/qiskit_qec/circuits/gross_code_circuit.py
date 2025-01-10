@@ -4,7 +4,7 @@ from qiskit_qec.circuits.code_circuit import CodeCircuit
 class GrossCodeCircuit(CodeCircuit):
     
     #TODO: Figure out what inputs are needed
-    def __init__(self):
+    def __init__(self, code, T: int = 7):
         super().__init__()
     pass
 
