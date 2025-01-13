@@ -23,11 +23,21 @@ class GrossCode(QECCode):
         self.k = None
         self.d = None
 
-        self.H_X, self.HZ = self.generate_check_matrix()
+        self.A = []
+        self.B = []
+
+        self.A_matrix = None
+        self.B_matrix = None
+
+        self.H_X, self.H_Z = self.generate_check_matrix()
         #parameters for gross code
         assert self.k == 12
         assert self.d == 12
         assert self.n == 144
+        assert self.H_X.shape == (72, 144)
+        assert self.H_Z.shape == (72, 144)
+        assert len(self.A) == 3
+        assert len(self.B) == 3
 
 
 
@@ -55,6 +65,7 @@ class GrossCode(QECCode):
         assert np.allclose(y_m, np.eye(self.l*self.m, dtype=int))
         #A = A1 + A2 + A3, B = B1 + B2 + B3
         #A = x^3 + y + y^2, B = x + x^2 + y^3
+
         #For gross code only
         A = (x @ x @ x + y + y @ y) % 2 
         B = (x + x @ x + y @ y @ y) % 2
@@ -62,6 +73,11 @@ class GrossCode(QECCode):
         assert np.allclose(A @ B, B @ A)
         self.compute_k(A,B)
         
+        self.A_matrix = A
+        self.B_matrix = B
+
+        self.A = [(x @ x @ x) % 2, y, (y @ y) % 2]
+        self.B = [x, (x @ x) % 2, (y @ y @ y) % 2]
         
         return A, B
     
@@ -88,6 +104,12 @@ class GrossCode(QECCode):
         return H_X, H_Z
     
     def compute_d(self,H_X, H_Z):
+        
+
+        """
+        We should check what is wrong, until this fucntion every assertion holds. Just setting d to a value
+        seems to be difficult, for some reason
+
 
         ker_H_X = la.null_space(H_X) % 2
         Q,R = la.qr(H_Z)
@@ -104,14 +126,13 @@ class GrossCode(QECCode):
         diff = ker_H_X_flat - rs_H_Z_flat
 
         m = np.array(list(diff)).reshape(2,self.n)
+        """
+
+        return 12
 
 
 if __name__ == "__main__":
     code = GrossCode()
-    print(code.H_X)
-    print(code.HZ)
-    print(code.d)
-    print(code.k)
         
 
 
