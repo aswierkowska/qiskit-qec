@@ -1,6 +1,9 @@
 """Generates circuits for the gross code."""
 from qiskit_qec.circuits.code_circuit import CodeCircuit
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+import sys
+print(sys.path)
+
 
 from qiskit_qec.codes.gross_code import GrossCode
 
@@ -26,6 +29,14 @@ class GrossCodeCircuit(CodeCircuit):
         self.qr_X = QuantumRegister(int(self.n/2), 'qr_X')
         self.qr_Z = QuantumRegister(int(self.n/2), 'qr_Z')
 
+        self.cr_X = ClassicalRegister(int(self.n/2), 'cr_X')
+        self.cr_Z = ClassicalRegister(int(self.n/2), 'cr_Z')
+
+        self.circuit.add_register(self.qr_left)
+        self.circuit.add_register(self.qr_right)
+        self.circuit.add_register(self.qr_X)
+        self.circuit.add_register(self.qr_Z)
+
         self.dept_8_syndrome_measurement()
     
 
@@ -46,11 +57,11 @@ class GrossCodeCircuit(CodeCircuit):
     #all thesApply a logical Z gate to the code.e are listed in the syndrome measurenemnt
     def CNOT(self, c, t):
         """CNOT with control qubit c and taget qubit t"""
-        pass
+        self.circuit.cx(c, t)
 
-    def InitX(self):
+    def InitX(self,q):
         """Initialize qubit q in the state |+> = (|0> + |1>)/sqrt(2)"""
-        pass
+        self.circuit.h(q)
 
     def InitZ(self,q):
         """Initialize qubit q in the state |0>"""
@@ -58,10 +69,12 @@ class GrossCodeCircuit(CodeCircuit):
 
     def MeasX(self,q):
         """Measure qubit q in the X basis, |+> or |->"""
-        pass
+        self.circuit.h(q)
+        self.circuit.measure(q, q) # Figure out how to do this
 
     def MeasZ(self,q):
         """Measure qubit q in the Z basis, |0> or |1>"""
+        self.circuit.measure(q, q) # Figure out how to do this
         pass
 
     def Idle(self,q):
