@@ -133,6 +133,9 @@ class GrossCode(QECCode):
 
 if __name__ == "__main__":
     code = GrossCode()
+    np.set_printoptions(threshold=np.inf)
+    print(code.A[0].shape)
+    print(code.B_matrix.shape)
         
 
 
