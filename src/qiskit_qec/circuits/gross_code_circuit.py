@@ -1,10 +1,6 @@
 """Generates circuits for the gross code."""
 from qiskit_qec.circuits.code_circuit import CodeCircuit
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
-import sys
-print(sys.path)
-
-
 from qiskit_qec.codes.gross_code import GrossCode
 
 class GrossCodeCircuit(CodeCircuit):
@@ -16,11 +12,12 @@ class GrossCodeCircuit(CodeCircuit):
         self._get_code_properties()
         self.T = T
 
-        self.circuit = None
+        self.qc = None
+        self.circuit = {}
         states = ["0", "1"]
 
         #add one point we need that
-        self.circuit = QuantumCircuit()
+        self.qc = QuantumCircuit()
 
         """The SM circuit uses 2n physical qubits in total: n data qubits and n ancillary check qubits. Page 12 Quantum memeory paper"""
         assert self.n % 2 == 0
@@ -32,17 +29,24 @@ class GrossCodeCircuit(CodeCircuit):
         self.cr_X = ClassicalRegister(int(self.n/2), 'cr_X')
         self.cr_Z = ClassicalRegister(int(self.n/2), 'cr_Z')
 
-        self.circuit.add_register(self.qr_X)
-        self.circuit.add_register(self.qr_left)
-        self.circuit.add_register(self.qr_right)
-        self.circuit.add_register(self.qr_Z)
+        self.qc.add_register(self.qr_X)
+        self.qc.add_register(self.qr_left)
+        self.qc.add_register(self.qr_right)
+        self.qc.add_register(self.qr_Z)
 
-        self.circuit.add_register(self.cr_X)
-        self.circuit.add_register(self.cr_Z)
+        self.qc.add_register(self.cr_X)
+        self.qc.add_register(self.cr_Z)
 
         self.connectivity_dict_L = {}
         self.connectivity_dict_R = {}
         self._init_connectivity_dict()
+
+        self.multiple_syndrome_measurement(self.T)
+
+        for state in states:
+            self.circuit[state] = self.qc.copy()
+        
+        self.detectors, self.logicals = self.stim_detectors()
 
     
 
@@ -69,12 +73,12 @@ class GrossCodeCircuit(CodeCircuit):
     #all thesApply a logical Z gate to the code.e are listed in the syndrome measurenemnt
     def CNOT(self, c, t):
         """CNOT with control qubit c and taget qubit t"""
-        self.circuit.cx(c, t)
+        self.qc.cx(c, t)
 
     def InitX(self,q):
         """Initialize qubit q in the state |+> = (|0> + |1>)/sqrt(2)"""
-        self.circuit.initialize([1,0],q)
-        self.circuit.h(q)
+        self.qc.initialize([1,0],q)
+        self.qc.h(q)
 
 
     def InitZ(self,q):
@@ -82,17 +86,17 @@ class GrossCodeCircuit(CodeCircuit):
         Qubits are already initiliazed to |0> in qiskit
         But mabye for second round we need to do this?
         """
-        self.circuit.initialize([1,0],q)
+        self.qc.initialize([1,0],q)
         pass
 
     def MeasX(self,q, c):
         """Measure qubit q in the X basis, |+> or |->"""
-        self.circuit.h(q)
-        self.circuit.measure(q, c) # Figure out how to do this
+        self.qc.h(q)
+        self.qc.measure(q, c) # Figure out how to do this
 
     def MeasZ(self,q, c):
         """Measure qubit q in the Z basis, |0> or |1>"""
-        self.circuit.measure(q, c) # Figure out how to do this
+        self.qc.measure(q, c) # Figure out how to do this
         pass
 
     def Idle(self,q):
@@ -109,7 +113,7 @@ class GrossCodeCircuit(CodeCircuit):
     
     def add_barrier(self):
         """Add a barrier to the circuit"""
-        self.circuit.barrier()
+        self.qc.barrier()
 
     def depth_8_syndrome_measurement(self):
         """
@@ -120,7 +124,7 @@ class GrossCodeCircuit(CodeCircuit):
         R = 27
         #Round 1
         for i in range(int(self.n/2)):
-            if self._get_j(self.A[0].transpose(), i) == R: print("R connects to Z: ", i)
+            #if self._get_j(self.A[0].transpose(), i) == R: print("R connects to Z: ", i)
 
             self.InitX(self.qr_X[i])
             self.CNOT(self.qr_right[self._get_j(self.A[0].transpose(), i)], self.qr_Z[i])
@@ -128,13 +132,12 @@ class GrossCodeCircuit(CodeCircuit):
 
             self.connectivity_dict_R[i].add(self._get_j(self.A[0].transpose(), i))
         
-        print("Round 1 done")
         self.add_barrier()
 
         #Round 2
         for i in range(int(self.n/2)):
-            if self._get_j(self.A[1], i) == L: print("L connects to X: ", i)
-            if self._get_j(self.A[2].transpose(), i) == R: print("R connects to Z: ", i)
+            #if self._get_j(self.A[1], i) == L: print("L connects to X: ", i)
+            #if self._get_j(self.A[2].transpose(), i) == R: print("R connects to Z: ", i)
                 
             self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[1],i )])
             self.CNOT(self.qr_right[self._get_j(self.A[2].transpose(),i)], self.qr_Z[i])
@@ -142,13 +145,12 @@ class GrossCodeCircuit(CodeCircuit):
             self.connectivity_dict_L[i].add(self._get_j(self.A[1], i))
             self.connectivity_dict_R[i].add(self._get_j(self.A[2].transpose(), i))
         
-        print("Round 2 done")
         self.add_barrier()
 
         #Round 3
         for i in range(int(self.n/2)):
-            if self._get_j(self.B[1], i) == R: print("R connects to X: ", i)
-            if self._get_j(self.B[0].transpose(), i) == L: print("L connects to Z: ", i)
+            #if self._get_j(self.B[1], i) == R: print("R connects to X: ", i)
+            #if self._get_j(self.B[0].transpose(), i) == L: print("L connects to Z: ", i)
 
             self.CNOT(self.qr_X[i], self.qr_right[self._get_j(self.B[1],i)])
             self.CNOT(self.qr_left[self._get_j(self.B[0].transpose(), i)], self.qr_Z[i])
@@ -156,13 +158,12 @@ class GrossCodeCircuit(CodeCircuit):
             self.connectivity_dict_R[i].add(self._get_j(self.B[1], i))
             self.connectivity_dict_L[i].add(self._get_j(self.B[0].transpose(), i))
         
-        print("Round 3 done")
         self.add_barrier()
 
         #Round 4
         for i in range(int(self.n/2)):
-            if self._get_j(self.B[0], i) == R: print("R connects to X: ", i)
-            if self._get_j(self.B[1].transpose(), i) == L: print("L connects to Z: ", i)
+            #if self._get_j(self.B[0], i) == R: print("R connects to X: ", i)
+            #if self._get_j(self.B[1].transpose(), i) == L: print("L connects to Z: ", i)
 
             self.CNOT(self.qr_X[i], self.qr_right[self._get_j(self.B[0], i)])
             self.CNOT(self.qr_left[self._get_j(self.B[1].transpose(), i)], self.qr_Z[i])
@@ -170,13 +171,12 @@ class GrossCodeCircuit(CodeCircuit):
             self.connectivity_dict_R[i].add(self._get_j(self.B[0], i))
             self.connectivity_dict_L[i].add(self._get_j(self.B[1].transpose(), i))
         
-        print("Round 4 done")
         self.add_barrier()
 
         #Round 5
         for i in range(int(self.n/2)):
-            if self._get_j(self.B[2], i) == R: print("R connects to X: ", i)
-            if self._get_j(self.B[2].transpose(), i) == L: print("L connects to Z: ", i)
+            #if self._get_j(self.B[2], i) == R: print("R connects to X: ", i)
+            #if self._get_j(self.B[2].transpose(), i) == L: print("L connects to Z: ", i)
 
             self.CNOT(self.qr_X[i], self.qr_right[self._get_j(self.B[2], i)])
             self.CNOT(self.qr_left[self._get_j(self.B[2].transpose(), i)], self.qr_Z[i])
@@ -184,13 +184,12 @@ class GrossCodeCircuit(CodeCircuit):
             self.connectivity_dict_R[i].add(self._get_j(self.B[2], i))
             self.connectivity_dict_L[i].add(self._get_j(self.B[2].transpose(), i))
         
-        print("Round 5 done")
         self.add_barrier()
 
         #Round 6
         for i in range(int(self.n/2)):
-            if self._get_j(self.A[0], i) == L: print("L connects to X: ", i)
-            if self._get_j(self.A[1].transpose(), i) == R: print("R connects to Z: ", i)
+            #if self._get_j(self.A[0], i) == L: print("L connects to X: ", i)
+            #if self._get_j(self.A[1].transpose(), i) == R: print("R connects to Z: ", i)
 
             self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[0], i)])
             self.CNOT(self.qr_right[self._get_j(self.A[1].transpose(), i)], self.qr_Z[i])
@@ -198,12 +197,11 @@ class GrossCodeCircuit(CodeCircuit):
             self.connectivity_dict_L[i].add(self._get_j(self.A[0], i))
             self.connectivity_dict_R[i].add(self._get_j(self.A[1].transpose(), i))
         
-        print("Round 6 done")
         self.add_barrier()
 
         #Round 7
         for i in range(int(self.n/2)):
-            if self._get_j(self.A[2], i) == L: print("L connects to X: ", i)
+            #if self._get_j(self.A[2], i) == L: print("L connects to X: ", i)
 
             self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[2], i)])
             self.MeasZ(self.qr_Z[i], self.cr_Z[i])
@@ -211,7 +209,6 @@ class GrossCodeCircuit(CodeCircuit):
 
             self.connectivity_dict_L[i].add(self._get_j(self.A[2], i))
 
-        print("Round 7 done")
         self.add_barrier()
 
         #Round 8
@@ -229,7 +226,7 @@ class GrossCodeCircuit(CodeCircuit):
         Multiple syndrome measurement cycle circuit
         """
         for i in range(T):
-            self.circuit.barrier()
+            self.qc.barrier()
             self.depth_8_syndrome_measurement()
 
 
@@ -254,13 +251,89 @@ class GrossCodeCircuit(CodeCircuit):
 
     #We may need to check out this fuction again becuase i have no idea what it does
     def check_nodes(self, nodes, ignore_extras=False, minimal=False):
-        return super().check_nodes(nodes, ignore_extras, minimal)
+        return NotImplementedError
     
     def is_cluster_neutral(self, nodes):
-        return super().is_cluster_neutral(nodes)
+        return NotImplementedError
     
     def string2nodes(self, string, **kwargs):
-        return super().string2nodes(string, **kwargs)
+        return NotImplementedError
+    
+    def stim_detectors(self):
+        #TODO: Check for correctness
+        """
+        Constructs detectors and logical operators for the Gross code using stim.
+
+        Returns:
+            detectors (list[dict]): Each detector specifies:
+                - 'clbits': Classical bits used in the comparison (register, index).
+                - 'qubits': Physical qubits participating in the stabilizer.
+                - 'time': The round of measurement.
+                - 'basis': The Pauli basis ('x' or 'z') of the stabilizer.
+            logicals (list[dict]): Each logical specifies:
+                - 'clbits': Classical bits used for the logical operator.
+                - 'basis': The Pauli basis ('x' or 'z') of the logical.
+        """
+        detectors = []
+        logicals = []
+
+        for t in range(self.T):
+            reg_X = f"round_{t}_x_bits"
+            reg_Z = f"round_{t}_z_bits"
+            
+            # X stabilizer detectors
+            for i in range(int(self.n / 2)):
+                det = {"clbits": [], "qubits": [], "time": t, "basis": "x"}
+                det["clbits"].append((reg_X, i))
+                det["qubits"].append(self.qr_X[i])
+                for conn in self.connectivity_dict_L[i]:
+                    det["qubits"].append(self.qr_left[conn])
+                for conn in self.connectivity_dict_R[i]:
+                    det["qubits"].append(self.qr_right[conn])
+                detectors.append(det)
+
+            # Z stabilizer detectors
+            for i in range(int(self.n / 2)):
+                det = {"clbits": [], "qubits": [], "time": t, "basis": "z"}
+                det["clbits"].append((reg_Z, i))
+                det["qubits"].append(self.qr_Z[i])
+                for conn in self.connectivity_dict_L[i]:
+                    det["qubits"].append(self.qr_left[conn])
+                for conn in self.connectivity_dict_R[i]:
+                    det["qubits"].append(self.qr_right[conn])
+                detectors.append(det)
+
+        # Final readout
+        reg_final = "final_readout"
+        reg_last_X = f"round_{self.T - 1}_x_bits"
+        reg_last_Z = f"round_{self.T - 1}_z_bits"
+
+        for i in range(int(self.n / 2)):
+            
+            det = {"clbits": [], "qubits": [], "time": self.T, "basis": "x"}
+            det["clbits"].append((reg_final, i))
+            det["clbits"].append((reg_last_X, i))
+            det["qubits"].append(self.qr_X[i])
+            detectors.append(det)
+
+            det = {"clbits": [], "qubits": [], "time": self.T, "basis": "z"}
+            det["clbits"].append((reg_final, i))
+            det["clbits"].append((reg_last_Z, i))
+            det["qubits"].append(self.qr_Z[i])
+            detectors.append(det)
+
+        # Logical operators
+        logicals.append({
+            "clbits": [(reg_final, q) for q in range(int(self.n / 2))],
+            "basis": "x"
+        })
+        logicals.append({
+            "clbits": [(reg_final, q) for q in range(int(self.n / 2))],
+            "basis": "z"
+        })
+
+        return detectors, logicals
+
 
 if __name__ == "__main__":
     code = GrossCode()
