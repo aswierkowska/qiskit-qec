@@ -14,6 +14,7 @@ class GrossCodeCircuit(CodeCircuit):
 
         self.qc = None
         self.circuit = {}
+        self.noisy_circuit = {}
         states = ["0", "1"]
 
         #add one point we need that
@@ -283,24 +284,24 @@ class GrossCodeCircuit(CodeCircuit):
             
             # X stabilizer detectors
             for i in range(int(self.n / 2)):
-                det = {"clbits": [], "qubits": [], "time": t, "basis": "x"}
-                det["clbits"].append((reg_X, i))
-                det["qubits"].append(self.qr_X[i])
+                det = {"clbits": [], "qubits": [], "time": float(t), "basis": "x"}
+                det["clbits"].append(('cr_X', i))
+                det["qubits"].append(self.qr_X[i]._index)
                 for conn in self.connectivity_dict_L[i]:
-                    det["qubits"].append(self.qr_left[conn])
+                    det["qubits"].append(self.qr_left[conn]._index)
                 for conn in self.connectivity_dict_R[i]:
-                    det["qubits"].append(self.qr_right[conn])
+                    det["qubits"].append(self.qr_right[conn]._index)
                 detectors.append(det)
 
             # Z stabilizer detectors
             for i in range(int(self.n / 2)):
-                det = {"clbits": [], "qubits": [], "time": t, "basis": "z"}
-                det["clbits"].append((reg_Z, i))
-                det["qubits"].append(self.qr_Z[i])
+                det = {"clbits": [], "qubits": [], "time": float(t), "basis": "z"}
+                det["clbits"].append(('cr_Z', i))
+                det["qubits"].append(self.qr_Z[i]._index)
                 for conn in self.connectivity_dict_L[i]:
-                    det["qubits"].append(self.qr_left[conn])
+                    det["qubits"].append(self.qr_left[conn]._index)
                 for conn in self.connectivity_dict_R[i]:
-                    det["qubits"].append(self.qr_right[conn])
+                    det["qubits"].append(self.qr_right[conn]._index)
                 detectors.append(det)
 
         # Final readout
@@ -310,25 +311,25 @@ class GrossCodeCircuit(CodeCircuit):
 
         for i in range(int(self.n / 2)):
             
-            det = {"clbits": [], "qubits": [], "time": self.T, "basis": "x"}
-            det["clbits"].append((reg_final, i))
-            det["clbits"].append((reg_last_X, i))
-            det["qubits"].append(self.qr_X[i])
+            det = {"clbits": [], "qubits": [], "time": float(self.T), "basis": "x"}
+            #det["clbits"].append((reg_final, i))
+            det["clbits"].append(('cr_X', i))
+            det["qubits"].append(self.qr_X[i]._index)
             detectors.append(det)
 
-            det = {"clbits": [], "qubits": [], "time": self.T, "basis": "z"}
-            det["clbits"].append((reg_final, i))
-            det["clbits"].append((reg_last_Z, i))
-            det["qubits"].append(self.qr_Z[i])
+            det = {"clbits": [], "qubits": [], "time": float(self.T), "basis": "z"}
+            #det["clbits"].append((reg_final, i))
+            det["clbits"].append(('cr_Z', i))
+            det["qubits"].append(self.qr_Z[i]._index)
             detectors.append(det)
 
         # Logical operators
         logicals.append({
-            "clbits": [(reg_final, q) for q in range(int(self.n / 2))],
+            "clbits": [('cr_X', q) for q in range(int(self.n / 2))],
             "basis": "x"
         })
         logicals.append({
-            "clbits": [(reg_final, q) for q in range(int(self.n / 2))],
+            "clbits": [('cr_Z', q) for q in range(int(self.n / 2))],
             "basis": "z"
         })
 
