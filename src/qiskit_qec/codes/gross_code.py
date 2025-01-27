@@ -40,11 +40,57 @@ class GrossCode(QECCode):
         assert len(self.B) == 3
 
 
+        self.x_gauges = self._x_gauge_geneators(self.d)
+        self.z_gauges = self._z_gauge_geneators(self.d)
+        self.x_stabilizers = self._x_stabilizer_geneators(self.d)
+        self.z_stabilizers = self._z_stabilizer_geneators(self.d)
+        self.logical_z = self._logical_z(self.n)
+        self.logical_x = self._logical_x(self.n)
 
 
+
+    def get_indices_of_ones(self,row):
+        """
+        Returns the indices of all entries in the row that are equal to 1.
+        """
+        return [index for index, value in enumerate(row) if value == 1]
         
 
-    #Are these not more like the code builder classes? -> Fin that out
+    #TODO thses functions but how? should not make sense i guess?
+    def _x_gauge_geneators(self, d):
+        x_gauges = []
+        for i in range(int(self.n/2)):
+            x_gauges.append(self.get_indices_of_ones(self.H_X[i]))
+        return x_gauges        
+
+    def _z_gauge_geneators(self, d):
+        z_gauges = []
+        for i in range(int(self.n/2)):
+            z_gauges.append(self.get_indices_of_ones(self.H_Z[i]))
+        return z_gauges
+    
+    def _x_stabilizer_geneators(self, d):
+        x_stabilizers = []
+        for i in range(self.H_X.shape[0]):
+            x_stabilizers.append(self.get_indices_of_ones(self.H_X[i]))
+        return x_stabilizers
+
+
+    def _z_stabilizer_geneators(self, d):
+        z_stabilizers = []
+        for i in range(self.H_Z.shape[0]):
+            z_stabilizers.append(self.get_indices_of_ones(self.H_Z[i]))
+        return z_stabilizers
+    
+
+    def _logical_z(self, n):
+        return [list(range(n))]
+
+    def _logical_x(self, n):
+        return [list(range(n))]
+
+
+
     def cyclic_shift(self, i):
         S = np.roll(np.eye(i,dtype=int), 1, axis=1)
         return S
@@ -134,8 +180,6 @@ class GrossCode(QECCode):
 if __name__ == "__main__":
     code = GrossCode()
     np.set_printoptions(threshold=np.inf)
-    print(code.A[0].shape)
-    print(code.B_matrix.shape)
         
 
 

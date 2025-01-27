@@ -27,22 +27,23 @@ class GrossCodeCircuit(CodeCircuit):
         self.qr_X = QuantumRegister(int(self.n/2), 'qr_X')
         self.qr_Z = QuantumRegister(int(self.n/2), 'qr_Z')
 
-        self.cr_X = ClassicalRegister(int(self.n/2), 'cr_X')
-        self.cr_Z = ClassicalRegister(int(self.n/2), 'cr_Z')
+        #self.cr_L = ClassicalRegister(int(self.n/2), 'final_readout_L')
+        #self.cr_R = ClassicalRegister(int(self.n/2), 'final_readout_R')
+
 
         self.qc.add_register(self.qr_X)
         self.qc.add_register(self.qr_left)
         self.qc.add_register(self.qr_right)
         self.qc.add_register(self.qr_Z)
 
-        self.qc.add_register(self.cr_X)
-        self.qc.add_register(self.cr_Z)
+        #self.qc.add_register(self.cr_L)
+        #self.qc.add_register(self.cr_R)
 
         self.connectivity_dict_L = {}
         self.connectivity_dict_R = {}
         self._init_connectivity_dict()
 
-        self.multiple_syndrome_measurement(self.T)
+        #self.multiple_syndrome_measurement(self.T)
 
         for state in states:
             self.circuit[state] = self.qc.copy()
@@ -92,12 +93,15 @@ class GrossCodeCircuit(CodeCircuit):
 
     def MeasX(self,q, c):
         """Measure qubit q in the X basis, |+> or |->"""
-        self.qc.h(q)
+        
         self.qc.measure(q, c) # Figure out how to do this
+        self.qc.reset(q)
 
     def MeasZ(self,q, c):
         """Measure qubit q in the Z basis, |0> or |1>"""
+        
         self.qc.measure(q, c) # Figure out how to do this
+        self.qc.reset(q)
         pass
 
     def Idle(self,q):
@@ -116,13 +120,19 @@ class GrossCodeCircuit(CodeCircuit):
         """Add a barrier to the circuit"""
         self.qc.barrier()
 
-    def depth_8_syndrome_measurement(self):
+    def depth_8_syndrome_measurement(self,t):
         """
         Depth-8 syndrom measurenment cycle circuit
         """
-        j = 0 #figure out what j is and where it comes from
-        L = 8
-        R = 27
+        reg_Z = f"round_{t}_z_bits"
+        cr_z = ClassicalRegister(int(self.n/2), name=reg_Z)
+        self.qc.add_register(cr_z)
+
+        reg_X = f"round_{t}_x_bits"
+        #self.qc.h(q) is this necessary?
+        cr_x = ClassicalRegister(int(self.n/2), name=reg_X)
+        self.qc.add_register(cr_x)
+
         #Round 1
         for i in range(int(self.n/2)):
             #if self._get_j(self.A[0].transpose(), i) == R: print("R connects to Z: ", i)
@@ -205,7 +215,7 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.A[2], i) == L: print("L connects to X: ", i)
 
             self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[2], i)])
-            self.MeasZ(self.qr_Z[i], self.cr_Z[i])
+            self.MeasZ(self.qr_Z[i], cr_z[i])
             self.Idle(self.qr_right[i])
 
             self.connectivity_dict_L[i].add(self._get_j(self.A[2], i))
@@ -214,7 +224,7 @@ class GrossCodeCircuit(CodeCircuit):
 
         #Round 8
         for i in range(int(self.n/2)):
-            self.MeasX(self.qr_X[i], self.cr_X[i])
+            self.MeasX(self.qr_X[i], cr_x[i])
             self.InitZ(self.qr_Z[i])
             self.Idle(self.qr_left[i])
             self.Idle(self.qr_right[i])
@@ -228,7 +238,7 @@ class GrossCodeCircuit(CodeCircuit):
         """
         for i in range(T):
             self.qc.barrier()
-            self.depth_8_syndrome_measurement()
+            self.depth_8_syndrome_measurement(i)
 
 
     def readout(self):
@@ -285,7 +295,7 @@ class GrossCodeCircuit(CodeCircuit):
             # X stabilizer detectors
             for i in range(int(self.n / 2)):
                 det = {"clbits": [], "qubits": [], "time": float(t), "basis": "x"}
-                det["clbits"].append(('cr_X', i))
+                det["clbits"].append((reg_X, i))
                 det["qubits"].append(self.qr_X[i]._index)
                 for conn in self.connectivity_dict_L[i]:
                     det["qubits"].append(self.qr_left[conn]._index)
@@ -296,7 +306,7 @@ class GrossCodeCircuit(CodeCircuit):
             # Z stabilizer detectors
             for i in range(int(self.n / 2)):
                 det = {"clbits": [], "qubits": [], "time": float(t), "basis": "z"}
-                det["clbits"].append(('cr_Z', i))
+                det["clbits"].append((reg_Z, i))
                 det["qubits"].append(self.qr_Z[i]._index)
                 for conn in self.connectivity_dict_L[i]:
                     det["qubits"].append(self.qr_left[conn]._index)
@@ -305,31 +315,31 @@ class GrossCodeCircuit(CodeCircuit):
                 detectors.append(det)
 
         # Final readout
-        reg_final = "final_readout"
-        reg_last_X = f"round_{self.T - 1}_x_bits"
-        reg_last_Z = f"round_{self.T - 1}_z_bits"
+        reg_T = "final_readout"
+        reg_X = f"round_{self.T - 1}_x_bits"
+        reg_Z = f"round_{self.T - 1}_z_bits"
 
         for i in range(int(self.n / 2)):
             
             det = {"clbits": [], "qubits": [], "time": float(self.T), "basis": "x"}
             #det["clbits"].append((reg_final, i))
-            det["clbits"].append(('cr_X', i))
+            det["clbits"].append((reg_X, i))
             det["qubits"].append(self.qr_X[i]._index)
             detectors.append(det)
 
             det = {"clbits": [], "qubits": [], "time": float(self.T), "basis": "z"}
             #det["clbits"].append((reg_final, i))
-            det["clbits"].append(('cr_Z', i))
+            det["clbits"].append((reg_Z, i))
             det["qubits"].append(self.qr_Z[i]._index)
             detectors.append(det)
 
         # Logical operators
         logicals.append({
-            "clbits": [('cr_X', q) for q in range(int(self.n / 2))],
+            "clbits": [(reg_X, q) for q in range(int(self.n / 2))],
             "basis": "x"
         })
         logicals.append({
-            "clbits": [('cr_Z', q) for q in range(int(self.n / 2))],
+            "clbits": [(reg_Z, q) for q in range(int(self.n / 2))],
             "basis": "z"
         })
 
@@ -340,6 +350,6 @@ if __name__ == "__main__":
     code = GrossCode()
     circuit = GrossCodeCircuit(code)
     circuit.multiple_syndrome_measurement(2)
-    #circuit.circuit.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
+    circuit.qc.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
     circuit.verify_connectivity()
     pass
