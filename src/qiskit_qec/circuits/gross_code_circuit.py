@@ -16,34 +16,43 @@ class GrossCodeCircuit(CodeCircuit):
         self.circuit = {}
         self.noisy_circuit = {}
         states = ["0", "1"]
+        self.basis = "z"
 
         #add one point we need that
         self.qc = QuantumCircuit()
 
         """The SM circuit uses 2n physical qubits in total: n data qubits and n ancillary check qubits. Page 12 Quantum memeory paper"""
         assert self.n % 2 == 0
-        self.qr_left = QuantumRegister(int(self.n/2), 'qr_left')
-        self.qr_right = QuantumRegister(int(self.n/2), 'qr_right')
+        self.n_half = int(self.n/2)#just for convinience
         self.qr_X = QuantumRegister(int(self.n/2), 'qr_X')
         self.qr_Z = QuantumRegister(int(self.n/2), 'qr_Z')
+        self.qr_left_right = QuantumRegister(int(self.n), 'qr_left_right')
+        self.cr_final = ClassicalRegister(int(self.n), 'final_readout')
 
-        #self.cr_L = ClassicalRegister(int(self.n/2), 'final_readout_L')
-        #self.cr_R = ClassicalRegister(int(self.n/2), 'final_readout_R')
-
-
+        #Register Layout taken from the paper
         self.qc.add_register(self.qr_X)
-        self.qc.add_register(self.qr_left)
-        self.qc.add_register(self.qr_right)
+        self.qc.add_register(self.qr_left_right)
         self.qc.add_register(self.qr_Z)
-
-        #self.qc.add_register(self.cr_L)
-        #self.qc.add_register(self.cr_R)
+        self.qc.add_register(self.cr_final)
 
         self.connectivity_dict_L = {}
         self.connectivity_dict_R = {}
         self._init_connectivity_dict()
 
-        #self.multiple_syndrome_measurement(self.T)
+
+        self._gauges4stabilizers = []
+        self._stabilizers = [self.x_stabilizers, self.z_stabilizers]
+        self._gauges = [self.x_gauges, self.z_gauges]
+        for j in range(2):
+            self._gauges4stabilizers.append([])
+            for stabilizer in self._stabilizers[j]:
+                gauges = []
+                for g, gauge in enumerate(self._gauges[j]):
+                    if set(stabilizer).intersection(set(gauge)) == set(gauge):
+                        gauges.append(g)
+                self._gauges4stabilizers[j].append(gauges)
+
+        self.multiple_syndrome_measurement(self.T)
 
         for state in states:
             self.circuit[state] = self.qc.copy()
@@ -63,6 +72,14 @@ class GrossCodeCircuit(CodeCircuit):
         self.H_Z = self.code.H_Z
         self.A_matrix = self.code.A_matrix
         self.B_matrix = self.code.B_matrix
+        self.x_gauges = self.code.x_gauges
+        self.z_gauges = self.code.z_gauges
+        self.x_stabilizers = self.code.x_stabilizers
+        self.z_stabilizers = self.code.z_stabilizers
+        self.logical_x = self.code.logical_x
+        self.logical_z = self.code.logical_z
+
+
     
     def _init_connectivity_dict(self):
         """Initialize the connectivity dict"""
@@ -138,8 +155,8 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.A[0].transpose(), i) == R: print("R connects to Z: ", i)
 
             self.InitX(self.qr_X[i])
-            self.CNOT(self.qr_right[self._get_j(self.A[0].transpose(), i)], self.qr_Z[i])
-            self.Idle(self.qr_left[i])
+            self.CNOT(self.qr_left_right[self._get_j(self.A[0].transpose(), i) + self.n_half], self.qr_Z[i])
+            self.Idle(self.qr_left_right[i])
 
             self.connectivity_dict_R[i].add(self._get_j(self.A[0].transpose(), i))
         
@@ -150,8 +167,8 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.A[1], i) == L: print("L connects to X: ", i)
             #if self._get_j(self.A[2].transpose(), i) == R: print("R connects to Z: ", i)
                 
-            self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[1],i )])
-            self.CNOT(self.qr_right[self._get_j(self.A[2].transpose(),i)], self.qr_Z[i])
+            self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.A[1],i )])
+            self.CNOT(self.qr_left_right[self._get_j(self.A[2].transpose(),i) + self.n_half], self.qr_Z[i])
 
             self.connectivity_dict_L[i].add(self._get_j(self.A[1], i))
             self.connectivity_dict_R[i].add(self._get_j(self.A[2].transpose(), i))
@@ -163,8 +180,8 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.B[1], i) == R: print("R connects to X: ", i)
             #if self._get_j(self.B[0].transpose(), i) == L: print("L connects to Z: ", i)
 
-            self.CNOT(self.qr_X[i], self.qr_right[self._get_j(self.B[1],i)])
-            self.CNOT(self.qr_left[self._get_j(self.B[0].transpose(), i)], self.qr_Z[i])
+            self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.B[1],i) + self.n_half])
+            self.CNOT(self.qr_left_right[self._get_j(self.B[0].transpose(), i)], self.qr_Z[i])
 
             self.connectivity_dict_R[i].add(self._get_j(self.B[1], i))
             self.connectivity_dict_L[i].add(self._get_j(self.B[0].transpose(), i))
@@ -176,8 +193,8 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.B[0], i) == R: print("R connects to X: ", i)
             #if self._get_j(self.B[1].transpose(), i) == L: print("L connects to Z: ", i)
 
-            self.CNOT(self.qr_X[i], self.qr_right[self._get_j(self.B[0], i)])
-            self.CNOT(self.qr_left[self._get_j(self.B[1].transpose(), i)], self.qr_Z[i])
+            self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.B[0], i) + self.n_half])
+            self.CNOT(self.qr_left_right[self._get_j(self.B[1].transpose(), i)], self.qr_Z[i])
 
             self.connectivity_dict_R[i].add(self._get_j(self.B[0], i))
             self.connectivity_dict_L[i].add(self._get_j(self.B[1].transpose(), i))
@@ -189,8 +206,8 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.B[2], i) == R: print("R connects to X: ", i)
             #if self._get_j(self.B[2].transpose(), i) == L: print("L connects to Z: ", i)
 
-            self.CNOT(self.qr_X[i], self.qr_right[self._get_j(self.B[2], i)])
-            self.CNOT(self.qr_left[self._get_j(self.B[2].transpose(), i)], self.qr_Z[i])
+            self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.B[2], i) + self.n_half])
+            self.CNOT(self.qr_left_right[self._get_j(self.B[2].transpose(), i)], self.qr_Z[i])
 
             self.connectivity_dict_R[i].add(self._get_j(self.B[2], i))
             self.connectivity_dict_L[i].add(self._get_j(self.B[2].transpose(), i))
@@ -202,8 +219,8 @@ class GrossCodeCircuit(CodeCircuit):
             #if self._get_j(self.A[0], i) == L: print("L connects to X: ", i)
             #if self._get_j(self.A[1].transpose(), i) == R: print("R connects to Z: ", i)
 
-            self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[0], i)])
-            self.CNOT(self.qr_right[self._get_j(self.A[1].transpose(), i)], self.qr_Z[i])
+            self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.A[0], i)])
+            self.CNOT(self.qr_left_right[self._get_j(self.A[1].transpose(), i) + self.n_half], self.qr_Z[i])
 
             self.connectivity_dict_L[i].add(self._get_j(self.A[0], i))
             self.connectivity_dict_R[i].add(self._get_j(self.A[1].transpose(), i))
@@ -214,9 +231,9 @@ class GrossCodeCircuit(CodeCircuit):
         for i in range(int(self.n/2)):
             #if self._get_j(self.A[2], i) == L: print("L connects to X: ", i)
 
-            self.CNOT(self.qr_X[i], self.qr_left[self._get_j(self.A[2], i)])
+            self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.A[2], i)])
             self.MeasZ(self.qr_Z[i], cr_z[i])
-            self.Idle(self.qr_right[i])
+            #self.Idle(self.qr_right[i])
 
             self.connectivity_dict_L[i].add(self._get_j(self.A[2], i))
 
@@ -226,8 +243,8 @@ class GrossCodeCircuit(CodeCircuit):
         for i in range(int(self.n/2)):
             self.MeasX(self.qr_X[i], cr_x[i])
             self.InitZ(self.qr_Z[i])
-            self.Idle(self.qr_left[i])
-            self.Idle(self.qr_right[i])
+            #self.Idle(self.qr_left[i])
+            #self.Idle(self.qr_right[i])
 
         self.add_barrier()
 
@@ -239,13 +256,13 @@ class GrossCodeCircuit(CodeCircuit):
         for i in range(T):
             self.qc.barrier()
             self.depth_8_syndrome_measurement(i)
+        
+        self.qc.barrier()
+        #final readout
+        for i in range(self.n):
+            self.qc.measure(self.qr_left_right[i], self.cr_final[i])
+            self.qc.reset(self.qr_left_right[i])
 
-
-    def readout(self):
-        """
-        Readout of all logical qubits
-        """
-        pass
 
     def verify_connectivity(self):
         """
@@ -270,86 +287,114 @@ class GrossCodeCircuit(CodeCircuit):
     def string2nodes(self, string, **kwargs):
         return NotImplementedError
     
+
+
     def stim_detectors(self):
-        #TODO: Check for correctness
-        """
-        Constructs detectors and logical operators for the Gross code using stim.
+            """
+            Constructs detectors and logicals required for stim.
 
-        Returns:
-            detectors (list[dict]): Each detector specifies:
-                - 'clbits': Classical bits used in the comparison (register, index).
-                - 'qubits': Physical qubits participating in the stabilizer.
-                - 'time': The round of measurement.
-                - 'basis': The Pauli basis ('x' or 'z') of the stabilizer.
-            logicals (list[dict]): Each logical specifies:
-                - 'clbits': Classical bits used for the logical operator.
-                - 'basis': The Pauli basis ('x' or 'z') of the logical.
-        """
-        detectors = []
-        logicals = []
+            Returns:
+                detectors (list[dict]): dictionaries containing
+                a) 'clbits', the classical bits (register, index) included in the measurement comparisons
+                b) 'qubits', the qubits (list of indices) participating in the stabilizer measurements
+                c) 'time', measurement round (int) of the earlier measurements in the detector
+                d) 'basis', the pauli basis ('x' or 'z') of the stabilizers
+                logicals (list[dict]): dictionaries containing
+                a) 'clbits', the classical bits (register, index) included in the logical measurement
+                b) 'basis', the pauli basis ('x' or 'z') of the logical
+            """
 
-        for t in range(self.T):
-            reg_X = f"round_{t}_x_bits"
-            reg_Z = f"round_{t}_z_bits"
-            
-            # X stabilizer detectors
-            for i in range(int(self.n / 2)):
-                det = {"clbits": [], "qubits": [], "time": float(t), "basis": "x"}
-                det["clbits"].append((reg_X, i))
-                det["qubits"].append(self.qr_X[i]._index)
-                for conn in self.connectivity_dict_L[i]:
-                    det["qubits"].append(self.qr_left[conn]._index)
-                for conn in self.connectivity_dict_R[i]:
-                    det["qubits"].append(self.qr_right[conn]._index)
-                detectors.append(det)
+            detectors = []
+            logicals = []
 
-            # Z stabilizer detectors
-            for i in range(int(self.n / 2)):
-                det = {"clbits": [], "qubits": [], "time": float(t), "basis": "z"}
-                det["clbits"].append((reg_Z, i))
-                det["qubits"].append(self.qr_Z[i]._index)
-                for conn in self.connectivity_dict_L[i]:
-                    det["qubits"].append(self.qr_left[conn]._index)
-                for conn in self.connectivity_dict_R[i]:
-                    det["qubits"].append(self.qr_right[conn]._index)
-                detectors.append(det)
+            ## 0th round of measurements
+            if self.basis == "x":
+                reg = "round_0_x_bits"
+                for stabind, stabilizer in enumerate(self.x_stabilizers):
+                    det = {"clbits": []}
+                    for gauge_ind in self._gauges4stabilizers[0][stabind]:
+                        det["clbits"].append((reg, gauge_ind))
+                    det["qubits"] = stabilizer.copy()
+                    det["time"] = 0
+                    det["basis"] = "x"
+                    detectors.append(det)
 
-        # Final readout
-        reg_T = "final_readout"
-        reg_X = f"round_{self.T - 1}_x_bits"
-        reg_Z = f"round_{self.T - 1}_z_bits"
+            else:
+                reg = "round_0_z_bits"
+                for stabind, stabilizer in enumerate(self.z_stabilizers):
+                    det = {"clbits": []}
+                    for gauge_ind in self._gauges4stabilizers[1][stabind]:
+                        det["clbits"].append((reg, gauge_ind))
+                    det["qubits"] = stabilizer.copy()
+                    det["time"] = 0
+                    det["basis"] = "z"
+                    detectors.append(det)
 
-        for i in range(int(self.n / 2)):
-            
-            det = {"clbits": [], "qubits": [], "time": float(self.T), "basis": "x"}
-            #det["clbits"].append((reg_final, i))
-            det["clbits"].append((reg_X, i))
-            det["qubits"].append(self.qr_X[i]._index)
-            detectors.append(det)
+            # adding first x and then z stabilizer comparisons
+            for j, basis in enumerate(["x", "z"]):
+                for t in range(
+                    1, self.T
+                ):  # compare stabilizer measurements with previous in each round
+                    reg_prev = "round_" + str(t - 1) + "_" + basis + "_bits"
+                    reg_t = "round_" + str(t) + "_" + basis + "_bits"
+                    for gind, gs in enumerate(self._gauges4stabilizers[j]):
+                        det = {"clbits": []}
+                        for gauge_ind in gs:
+                            det["clbits"].append((reg_t, gauge_ind))
+                            det["clbits"].append((reg_prev, gauge_ind))
+                        det["qubits"] = self._stabilizers[j][gind].copy()
+                        det["time"] = t
+                        det["basis"] = basis
+                        detectors.append(det)
 
-            det = {"clbits": [], "qubits": [], "time": float(self.T), "basis": "z"}
-            #det["clbits"].append((reg_final, i))
-            det["clbits"].append((reg_Z, i))
-            det["qubits"].append(self.qr_Z[i]._index)
-            detectors.append(det)
+            ## final measurements
+            if self.basis == "x":
+                reg_prev = "round_" + str(self.T - 1) + "_x_bits"
+                reg_T = "final_readout"
+                for stabind, stabilizer in enumerate(self.x_stabilizers):
+                    det = {"clbits": []}
+                    for q in stabilizer:
+                        det["clbits"].append((reg_T, q))
+                    for gauge_ind in self._gauges4stabilizers[0][stabind]:
+                        det["clbits"].append((reg_prev, gauge_ind))
+                    det["qubits"] = stabilizer.copy()
+                    det["time"] = self.T
+                    det["basis"] = "x"
+                    detectors.append(det)
+                logicals.append(
+                    {
+                        "clbits": [(reg_T, q) for q in sorted(self.logical_x[0])],
+                        "basis": "z",
+                    }
+                )
+            else:
+                reg_prev = "round_" + str(self.T - 1) + "_z_bits"
+                reg_T = "final_readout"
+                for stabind, stabilizer in enumerate(self.z_stabilizers):
+                    det = {"clbits": []}
+                    for q in stabilizer:
+                        det["clbits"].append((reg_T, q))
+                    for gauge_ind in self._gauges4stabilizers[1][stabind]:
+                        det["clbits"].append((reg_prev, gauge_ind))
+                    det["qubits"] = stabilizer.copy()
+                    det["time"] = self.T
+                    det["basis"] = "x"
+                    detectors.append(det)
+                logicals.append(
+                    {
+                        "clbits": [(reg_T, q) for q in sorted(self.logical_z[0])],
+                        "basis": "z",
+                    }
+                )
 
-        # Logical operators
-        logicals.append({
-            "clbits": [(reg_X, q) for q in range(int(self.n / 2))],
-            "basis": "x"
-        })
-        logicals.append({
-            "clbits": [(reg_Z, q) for q in range(int(self.n / 2))],
-            "basis": "z"
-        })
+            return detectors, logicals
 
-        return detectors, logicals
 
 
 if __name__ == "__main__":
     code = GrossCode()
     circuit = GrossCodeCircuit(code)
     circuit.multiple_syndrome_measurement(2)
-    circuit.qc.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
+    #circuit.qc.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
     circuit.verify_connectivity()
     pass
