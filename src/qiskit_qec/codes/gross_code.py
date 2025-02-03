@@ -57,6 +57,7 @@ class GrossCode(QECCode):
         
 
     #TODO thses functions but how? should not make sense i guess?
+    #Because gross code is more like a surface code this should be fine. It's not CSS Code tho
     def _x_gauge_geneators(self, d):
         x_gauges = []
         for i in range(int(self.n/2)):
@@ -87,9 +88,8 @@ class GrossCode(QECCode):
         return [list(range(n))]
 
     def _logical_x(self, n):
+        #print(sp.Matrix(self.H_X).nullspace().rowspace())
         return [list(range(n))]
-
-
 
     def cyclic_shift(self, i):
         S = np.roll(np.eye(i,dtype=int), 1, axis=1)
@@ -161,11 +161,6 @@ class GrossCode(QECCode):
         Q,R = la.qr(H_Z)
         rs_H_Z = R[np.abs(R).sum(axis=1) > 1e-8]
 
-        print(ker_H_X.shape)
-        print(rs_H_Z.shape)
-        print(ker_H_X)
-        print(rs_H_Z)
-
         ker_H_X_flat = set(ker_H_X.flatten())
         rs_H_Z_flat = set(rs_H_Z.flatten())
 
@@ -179,7 +174,8 @@ class GrossCode(QECCode):
 
 if __name__ == "__main__":
     code = GrossCode()
-    np.set_printoptions(threshold=np.inf)
+    #np.set_printoptions(threshold=np.inf)
+    code._logical_x(144)
         
 
 
