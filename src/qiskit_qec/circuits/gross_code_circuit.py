@@ -96,7 +96,7 @@ class GrossCodeCircuit(CodeCircuit):
 
     def InitX(self,q):
         """Initialize qubit q in the state |+> = (|0> + |1>)/sqrt(2)"""
-        self.qc.initialize([1,0],q)
+        self.qc.initialize('0',q)
         self.qc.h(q)
 
 
@@ -105,12 +105,12 @@ class GrossCodeCircuit(CodeCircuit):
         Qubits are already initiliazed to |0> in qiskit
         But mabye for second round we need to do this?
         """
-        self.qc.initialize([1,0],q)
+        self.qc.initialize('0',q)
         pass
 
     def MeasX(self,q, c):
         """Measure qubit q in the X basis, |+> or |->"""
-        
+        self.qc.h(q)
         self.qc.measure(q, c) # Figure out how to do this
         self.qc.reset(q)
 
@@ -253,13 +253,19 @@ class GrossCodeCircuit(CodeCircuit):
         """
         Multiple syndrome measurement cycle circuit
         """
+        if self.basis == "x":
+                self.qc.h(self.qr_left_right)
+
         for i in range(T):
             self.qc.barrier()
             self.depth_8_syndrome_measurement(i)
         
         self.qc.barrier()
         #final readout
-        for i in range(self.n):
+        if self.basis == "x":
+                self.qc.h(self.qr_left_right)
+
+        for i in range(self.n):  
             self.qc.measure(self.qr_left_right[i], self.cr_final[i])
             self.qc.reset(self.qr_left_right[i])
 
