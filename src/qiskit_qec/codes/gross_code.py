@@ -61,13 +61,18 @@ class GrossCode(QECCode):
     def _x_gauge_geneators(self, d):
         x_gauges = []
         for i in range(int(self.n/2)):
-            x_gauges.append(self.get_indices_of_ones(self.H_X[i]))
+            l = self.get_indices_of_ones(self.H_X[i])
+            #print([l[0],l[3],l[4],l[5],l[1],l[2]])
+            x_gauges.append([l[0],l[3],l[4],l[5],l[1],l[2]])
+            #x_gauges.append(self.get_indices_of_ones(self.H_X[i]))
         return x_gauges        
 
     def _z_gauge_geneators(self, d):
         z_gauges = []
         for i in range(int(self.n/2)):
-            z_gauges.append(self.get_indices_of_ones(self.H_Z[i]))
+            l = self.get_indices_of_ones(self.H_Z[i])
+            z_gauges.append([l[0],l[3],l[4],l[5],l[1],l[2]])
+            #z_gauges.append(self.get_indices_of_ones(self.H_Z[i]))
         return z_gauges
     
     def _x_stabilizer_geneators(self, d):

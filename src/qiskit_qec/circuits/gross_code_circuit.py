@@ -267,7 +267,7 @@ class GrossCodeCircuit(CodeCircuit):
 
         for i in range(self.n):  
             self.qc.measure(self.qr_left_right[i], self.cr_final[i])
-            self.qc.reset(self.qr_left_right[i])
+            #self.qc.reset(self.qr_left_right[i])
 
 
     def verify_connectivity(self):
@@ -370,7 +370,7 @@ class GrossCodeCircuit(CodeCircuit):
                 logicals.append(
                     {
                         "clbits": [(reg_T, q) for q in sorted(self.logical_x[0])],
-                        "basis": "z",
+                        "basis": "x",
                     }
                 )
             else:
@@ -400,7 +400,6 @@ class GrossCodeCircuit(CodeCircuit):
 if __name__ == "__main__":
     code = GrossCode()
     circuit = GrossCodeCircuit(code)
-    circuit.multiple_syndrome_measurement(2)
     #circuit.qc.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
     circuit.verify_connectivity()
     pass
