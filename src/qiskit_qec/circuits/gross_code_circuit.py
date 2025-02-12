@@ -70,6 +70,7 @@ class GrossCodeCircuit(CodeCircuit):
         self.B = self.code.B
         self.H_X = self.code.H_X
         self.H_Z = self.code.H_Z
+        self.H = self.code.H
         self.A_matrix = self.code.A_matrix
         self.B_matrix = self.code.B_matrix
         self.x_gauges = self.code.x_gauges

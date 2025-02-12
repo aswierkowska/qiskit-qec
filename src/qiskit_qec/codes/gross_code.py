@@ -3,6 +3,9 @@ from qiskit_qec.codes.qec_code import QECCode
 import numpy as np
 import scipy.linalg as la
 import sympy as sp
+import belief_propagation as bp
+import networkx as nx
+import matplotlib.pyplot as plt
 
 class GrossCode(QECCode):
 
@@ -30,6 +33,7 @@ class GrossCode(QECCode):
         self.B_matrix = None
 
         self.H_X, self.H_Z = self.generate_check_matrix()
+        self.H = np.vstack([self.H_X, self.H_Z])
         #parameters for gross code
         assert self.k == 12
         assert self.d == 12
@@ -104,7 +108,7 @@ class GrossCode(QECCode):
         x = np.kron(self.cyclic_shift(self.l), np.eye(self.m, dtype=int))
         y = np.kron(np.eye(self.l, dtype=int), self.cyclic_shift(self.m))
 
-        assert np.allclose(x @ y, y @ x)
+        assert np.allclose((x @ y) % 2, (y @ x) % 2)
         x_l = (x @ x) % 2
         for i in range(2, self.l):
             x_l = (x_l @ x) % 2
@@ -122,6 +126,7 @@ class GrossCode(QECCode):
         B = (x + x @ x + y @ y @ y) % 2
 
         assert np.allclose(A @ B, B @ A)
+        self.check_A_B_properties(A,B)
         self.compute_k(A,B)
         
         self.A_matrix = A
@@ -130,7 +135,17 @@ class GrossCode(QECCode):
         self.A = [(x @ x @ x) % 2, y, (y @ y) % 2]
         self.B = [x, (x @ x) % 2, (y @ y @ y) % 2]
         
+
         return A, B
+    
+    def check_A_B_properties(self,A,B):
+        #each row sums up to 3
+        #each column sums up to 3
+        assert np.allclose(A.sum(axis=1), 3*np.ones(A.shape[0]))
+        assert np.allclose(A.sum(axis=0), 3*np.ones(A.shape[1]))
+        assert np.allclose(B.sum(axis=1), 3*np.ones(B.shape[0]))
+        assert np.allclose(B.sum(axis=0), 3*np.ones(B.shape[1]))
+        print("A and B properties are satisfied")
     
     def compute_k(self, A,B):
         ker_A = la.null_space(A) % 2
@@ -150,6 +165,10 @@ class GrossCode(QECCode):
         assert H_Z.shape == (self.l*self.m, 2*self.l*self.m)
         assert np.allclose((H_X @ H_Z.transpose()) % 2, np.zeros((self.l*self.m, self.l*self.m)))
         assert np.allclose( ((A @ B) + (B@A)) % 2, np.zeros((self.l*self.m, self.l*self.m)))
+        #each row sums up to 6
+        #each column sums up to 6
+        assert np.allclose(H_X.sum(axis=1), 6*np.ones(H_X.shape[0]))
+        assert np.allclose(H_Z.sum(axis=1), 6*np.ones(H_Z.shape[0]))
 
         self.d = self.compute_d(H_X, H_Z)
         return H_X, H_Z
@@ -176,11 +195,54 @@ class GrossCode(QECCode):
 
         return 12
 
+    def show_tannergraph(self):
+        print(self.H_X.shape)
+        tg = bp.TannerGraph.from_biadjacency_matrix(self.H,channel_model=1)
+        g = tg.to_nx()
+
+        # Assuming `g` is your Tanner graph
+        fig = plt.figure()
+
+        # Get the two bipartite sets
+        top_set, bottom_set = nx.bipartite.sets(g)   # Remaining nodes are in `bottom`
+
+        # Sort nodes to ensure consistent ordering
+        top = sorted(top_set)
+        bottom = sorted(bottom_set)
+
+        # Assign colors
+        node_colors = {}
+
+        # Color first 72 check nodes differently from the next 72
+        for i, node in enumerate(top):
+            node_colors[node] = "red" if i < 72 else "blue"
+
+        # Color first 72 variable nodes differently from the next 72
+        for i, node in enumerate(bottom):
+            node_colors[node] = "green" if i < 72 else "orange"
+
+        # Get color list for drawing
+        node_color_list = [node_colors[n] for n in g.nodes()]
+
+        # Labels for nodes
+        labels = {node: d["label"] for node, d in g.nodes(data=True)}
+
+        # Draw the graph
+        nx.draw(
+            g,
+            pos=nx.bipartite_layout(g, top),  # Layout for bipartite graph
+            with_labels=True,
+            labels=labels,
+            node_color=node_color_list
+        )
+
+        plt.show()
+
 
 if __name__ == "__main__":
     code = GrossCode()
     #np.set_printoptions(threshold=np.inf)
-    code._logical_x(144)
-        
+    #code._logical_x(144)
+    code.show_tannergraph()
 
 
