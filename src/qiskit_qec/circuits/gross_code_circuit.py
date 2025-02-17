@@ -2,6 +2,7 @@
 from qiskit_qec.circuits.code_circuit import CodeCircuit
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit_qec.codes.gross_code import GrossCode
+from qiskit_qec.codes.bbc import BBCode
 from qiskit_aer.noise import depolarizing_error
 
 class GrossCodeCircuit(CodeCircuit):
@@ -104,7 +105,7 @@ class GrossCodeCircuit(CodeCircuit):
     def CNOT(self, c, t):
         """CNOT with control qubit c and taget qubit t"""
         self.qc.cx(c, t)
-        self.qc.id(c)
+        #self.qc.id(c)
 
     def InitX(self,q):
         """Initialize qubit q in the state |+> = (|0> + |1>)/sqrt(2)"""
@@ -165,7 +166,7 @@ class GrossCodeCircuit(CodeCircuit):
         for i in range(int(self.n/2)):
             self.InitX(self.qr_X[i])
             self.CNOT(self.qr_left_right[self._get_j(self.A[0].transpose(), i) + self.n_half], self.qr_Z[i])
-            self.Idle(self.qr_left_right[i])
+            #self.Idle(self.qr_left_right[i])
 
             self.connectivity_dict_R[i].add(self._get_j(self.A[0].transpose(), i))
         
@@ -398,8 +399,8 @@ class GrossCodeCircuit(CodeCircuit):
 
 
 if __name__ == "__main__":
-    code = GrossCode()
-    circuit = GrossCodeCircuit(code)
-    #circuit.qc.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
+    code = BBCode(90,8,10,15,3,[9,1,2],[0,2,7])
+    circuit = GrossCodeCircuit(code, T=1)
+    circuit.qc.draw(output='mpl', filename='bbc_90_8_10_circuit.png', vertical_compression='high', scale=0.3, fold=500)
     circuit.verify_connectivity()
     pass
