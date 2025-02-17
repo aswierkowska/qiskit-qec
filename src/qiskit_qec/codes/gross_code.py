@@ -3,7 +3,7 @@ from qiskit_qec.codes.qec_code import QECCode
 import numpy as np
 import scipy.linalg as la
 import sympy as sp
-import belief_propagation as bp
+#import belief_propagation as bp
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -195,6 +195,7 @@ class GrossCode(QECCode):
 
         return 12
 
+    """
     def show_tannergraph(self):
         print(self.H_X.shape)
         tg = bp.TannerGraph.from_biadjacency_matrix(self.H,channel_model=1)
@@ -237,7 +238,8 @@ class GrossCode(QECCode):
         )
 
         plt.show()
-
+    """
+    
 
 if __name__ == "__main__":
     code = GrossCode()
