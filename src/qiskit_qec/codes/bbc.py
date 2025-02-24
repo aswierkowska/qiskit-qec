@@ -55,6 +55,9 @@ class BBCode(QECCode):
         self.logical_z = self._logical_z(self.n)
         self.logical_x = self._logical_x(self.n)
 
+        #print(self.logical_x)
+        #print(self.logical_z)
+
 
 
     def get_indices_of_ones(self,row):
@@ -62,6 +65,14 @@ class BBCode(QECCode):
         Returns the indices of all entries in the row that are equal to 1.
         """
         return [index for index, value in enumerate(row) if value == 1]
+    
+
+    def indicator_vector(self,positions, n):
+        """Creates a binary vector of length n with 1s at the specified positions."""
+        vector = np.zeros(n, dtype=int)  # Initialize all zeros
+        vector[positions] = 1  # Set the given indices to 1
+        return vector
+
         
 
     #TODO thses functions but how? should not make sense i guess?
@@ -95,12 +106,28 @@ class BBCode(QECCode):
             z_stabilizers.append(self.get_indices_of_ones(self.H_Z[i]))
         return z_stabilizers
     
+    def null_space_mod2(self, matrix):
+        M = sp.Matrix(matrix)
+        M = M.rref(iszerofunc=lambda x: x % 2 == 0)[0]
+
+        null_vectors = M.nullspace()
+        null_vectors_mod2 = [np.array(v) % 2 for v in null_vectors]
+        logicals = [list(np.where(v == 1)[0]) for v in null_vectors_mod2]
+        return logicals
 
     def _logical_z(self, n):
-        return [list(range(n))]
+        logz = self.null_space_mod2(self.H_X)
+        z_log = []
+        for i in logz:
+            z_log.append(self.indicator_vector(i,n))
+        return z_log
 
     def _logical_x(self, n):
-        return [list(range(n))]
+        logx = self.null_space_mod2(self.H_Z)
+        x_log = []
+        for i in logx:
+            x_log.append(self.indicator_vector(i,n))
+        return x_log
 
     def cyclic_shift(self, i):
         S = np.roll(np.eye(i,dtype=int), 1, axis=1)
@@ -217,6 +244,19 @@ class BBCode(QECCode):
         """
 
         return self.d
+    
+    def verify_syndrome(self):
+        H = self.H
+        error = np.zeros(self.n, dtype=int)
+        error[0] = 1
+        error[1] = 1
+        syndrome = (error @ H) % 2
+        print("Syndrom: ", syndrome)
+        print("Error: ", error)
+        print(H[0])
+        print(H[1])
+
+        pass
 
     def show_tannergraph(self):
         tg = bp.TannerGraph.from_biadjacency_matrix(self.H,channel_model=1)
@@ -265,6 +305,7 @@ if __name__ == "__main__":
     code = BBCode(72,12,6,6,6,[3,1,2],[3,1,2])
     #np.set_printoptions(threshold=np.inf)
     #code._logical_x(144)
-    code.show_tannergraph()
+    #code.show_tannergraph()
+    code.verify_syndrome()
 
 

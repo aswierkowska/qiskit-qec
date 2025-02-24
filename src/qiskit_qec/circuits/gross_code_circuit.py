@@ -109,7 +109,7 @@ class GrossCodeCircuit(CodeCircuit):
 
     def InitX(self,q):
         """Initialize qubit q in the state |+> = (|0> + |1>)/sqrt(2)"""
-        self.qc.initialize('0',q)
+        #self.qc.initialize('0',q)
         self.qc.h(q)
 
 
@@ -118,7 +118,7 @@ class GrossCodeCircuit(CodeCircuit):
         Qubits are already initiliazed to |0> in qiskit
         But mabye for second round we need to do this?
         """
-        self.qc.initialize('0',q)
+        #self.qc.initialize('0',q)
         pass
 
     def MeasX(self,q, c):
@@ -136,6 +136,7 @@ class GrossCodeCircuit(CodeCircuit):
     def Idle(self,q):
         """Idle operation, Identity on qubit q"""
         self.qc.id(q)
+        #self.qc.h(q)
         pass
 
     #helper
@@ -148,7 +149,8 @@ class GrossCodeCircuit(CodeCircuit):
     
     def add_barrier(self):
         """Add a barrier to the circuit"""
-        self.qc.barrier()
+        #self.qc.barrier()
+        pass
 
     def depth_8_syndrome_measurement(self,t):
         """
