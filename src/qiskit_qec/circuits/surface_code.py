@@ -25,7 +25,7 @@ from qiskit_qec.circuits.code_circuit import CodeCircuit
 class SurfaceCodeCircuit(CodeCircuit):
     """Distance d rotated surface code with  T syndrome measurement rounds."""
 
-    def __init__(self, d: int, T: int, basis: str = "z", resets=True):
+    def __init__(self, d: int, T: int = 0, basis: str = "z", resets=True):
         """Creates the circuits corresponding to logical basis states.
 
         Creates the circuits corresponding to logical basis states encoded
@@ -72,6 +72,19 @@ class SurfaceCodeCircuit(CodeCircuit):
         self.z_stabilizer_ops = self.z_gauge_ops
         self.z_logical = [self._logicals["z"][0]]
         self.z_boundary = [self._logicals["z"][0] + self._logicals["z"][1]]
+        # TODO ADDED:
+        self._gauges4stabilizers = []
+        # assuming x_stabilier in csscode == x_stabilizer_ops here:
+        self._stabilizers = [self.x_stabilizer_ops, self.z_stabilizer_ops]
+        self._gauges = [self.x_gauge_ops, self.z_gauge_ops]
+        for j in range(2):
+            self._gauges4stabilizers.append([])
+            for stabilizer in self._stabilizers[j]:
+                gauges = []
+                for g, gauge in enumerate(self._gauges[j]):
+                    if set(stabilizer).intersection(set(gauge)) == set(gauge):
+                        gauges.append(g)
+                self._gauges4stabilizers[j].append(gauges)
 
         # quantum registers
         self._num_xy = int((d**2 - 1) / 2)
@@ -87,6 +100,7 @@ class SurfaceCodeCircuit(CodeCircuit):
 
         # create the circuits
         self.circuit = {}
+        self.noisy_circuit = {}
         for log in ["0", "1"]:
             self.circuit[log] = QuantumCircuit(
                 self.code_qubit, self.zplaq_qubit, self.xplaq_qubit, name=log
@@ -510,3 +524,147 @@ class SurfaceCodeCircuit(CodeCircuit):
             nodes (dictionary in the form of the return value of string2nodes)
         """
         return not bool(len(nodes) % 2)
+
+   
+    def stim_detectors(self):
+        """
+        Constructs detectors and logicals required for stim.
+
+        Returns:
+            detectors (list[dict]): dictionaries containing
+            a) 'clbits', the classical bits (register, index) included in the measurement comparisons
+            b) 'qubits', the qubits (list of indices) participating in the stabilizer measurements
+            c) 'time', measurement round (int) of the earlier measurements in the detector
+            d) 'basis', the pauli basis ('x' or 'z') of the stabilizers
+            logicals (list[dict]): dictionaries containing
+            a) 'clbits', the classical bits (register, index) included in the logical measurement
+            b) 'basis', the pauli basis ('x' or 'z') of the logical
+        """
+        detectors = []
+        logicals = []
+        """
+        # DETECTORS: Process both X and Z stabilizers
+        for basis, stabilizers, gauge_ops, reg_prefix in [
+            ("x", self.x_stabilizer_ops, self.x_gauge_ops, "round_{}_xplaq_bit"),
+            ("z", self.z_stabilizer_ops, self.z_gauge_ops, "round_{}_zplaq_bit"),
+        ]:
+            # Loop through syndrome measurement rounds
+            for t in range(self.T):
+                reg_prev = reg_prefix.format(t - 1) if t > 0 else None
+                reg_t = reg_prefix.format(t)
+
+                for stabilizer in stabilizers:
+                    det = {"clbits": [], "qubits": stabilizer.copy(), "time": t, "basis": basis}
+                    # Add classical bits for current and previous rounds
+                    for gauge_ind in range(len(gauge_ops)):
+                        det["clbits"].append((reg_t, gauge_ind))
+                        if reg_prev:  # Add previous round's bit for comparison
+                            det["clbits"].append((reg_prev, gauge_ind))
+                    detectors.append(det)
+
+        # LOGICALS: Process logical qubits for both X and Z bases
+        for basis, logicals_list, reg_prefix in [
+            ("x", self.x_logical, "round_{}_xplaq_bit"),
+            ("z", self.z_logical, "round_{}_zplaq_bit"),
+        ]:
+            reg_prev = reg_prefix.format(self.T - 1)  # Last round of ancilla measurement
+            reg_T = "code_bit"  # Final logical measurement register
+
+            # Iterate over logical qubit groups (e.g., top row, bottom row)
+            for logical_group in logicals_list:
+                # Construct final logical detector
+                det = {"clbits": [], "qubits": logical_group.copy(), "time": self.T, "basis": basis}
+                for q in logical_group:
+                    det["clbits"].append((reg_T, q))
+                for gauge_ind in range(len(self.x_gauge_ops if basis == "x" else self.z_gauge_ops)):
+                    det["clbits"].append((reg_prev, gauge_ind))
+                detectors.append(det)
+
+                # Append logical definition for tracking
+                logicals.append({
+                    "clbits": [(reg_T, q) for q in logical_group],
+                    "basis": basis,
+                })
+        """
+
+        ## 0th round of measurements
+        if self.basis == "x":
+            reg = "round_0_xplaq_bit"
+            for stabind, stabilizer in enumerate(self.x_stabilizer_ops):
+                det = {"clbits": []}
+                for gauge_ind in self._gauges4stabilizers[0][stabind]:
+                    det["clbits"].append((reg, gauge_ind))
+                det["qubits"] = stabilizer.copy()
+                det["time"] = 0
+                det["basis"] = "x"
+                detectors.append(det)
+
+        else:
+            reg = "round_0_zplaq_bit" 
+            for stabind, stabilizer in enumerate(self.z_stabilizer_ops):
+                det = {"clbits": []}
+                for gauge_ind in self._gauges4stabilizers[1][stabind]:
+                    det["clbits"].append((reg, gauge_ind))
+                det["qubits"] = stabilizer.copy()
+                det["time"] = 0
+                det["basis"] = "z"
+                detectors.append(det)
+
+        # adding first x and then z stabilizer comparisons
+        for basis, stabilizers, gauge_ops, reg_prefix in [
+            ("x", self.x_stabilizer_ops, self._gauges4stabilizers[0], "round_{}_xplaq_bit"),
+            ("z", self.z_stabilizer_ops, self._gauges4stabilizers[1], "round_{}_zplaq_bit"),
+        ]:
+            for t in range(1, self.T):
+                reg_prev = reg_prefix.format(t - 1) if t > 0 else None
+                reg_t = reg_prefix.format(t)
+                for gind, gs in enumerate(gauge_ops):
+                    det = {"clbits": []}
+                    for gauge_ind in gs:
+                        det["clbits"].append((reg_t, gauge_ind))
+                        det["clbits"].append((reg_prev, gauge_ind))
+                    det["qubits"] = stabilizers[gind].copy()
+                    det["time"] = t
+                    det["basis"] = basis
+                    detectors.append(det)
+
+        ## final measurements
+        reg_T = "code_bit"
+        if self.basis == "x":
+            reg_prev = "round_" + str(self.T - 1) + "_xplaq_bit"
+            for stabind, stabilizer in enumerate(self.x_stabilizer_ops):
+                det = {"clbits": []}
+                for q in stabilizer:
+                    det["clbits"].append((reg_T, q))
+                for gauge_ind in self._gauges4stabilizers[0][stabind]:
+                    det["clbits"].append((reg_prev, gauge_ind))
+                det["qubits"] = stabilizer.copy()
+                det["time"] = self.T
+                det["basis"] = "x"
+                detectors.append(det)
+            logicals.append(
+                {
+                    "clbits": [(reg_T, q) for q in sorted(self.x_logical[0])],
+                    "basis": "z",
+                }
+            )
+        else:
+            reg_prev = "round_" + str(self.T - 1) + "_zplaq_bit"
+            for stabind, stabilizer in enumerate(self.z_stabilizer_ops):
+                det = {"clbits": []}
+                for q in stabilizer:
+                    det["clbits"].append((reg_T, q))
+                for gauge_ind in self._gauges4stabilizers[1][stabind]:
+                    det["clbits"].append((reg_prev, gauge_ind))
+                det["qubits"] = stabilizer.copy()
+                det["time"] = self.T
+                det["basis"] = "x"
+                detectors.append(det)
+            logicals.append(
+                {
+                    "clbits": [(reg_T, q) for q in sorted(self.z_logical[0])],
+                    "basis": "z",
+                }
+            )
+
+        return detectors, logicals
