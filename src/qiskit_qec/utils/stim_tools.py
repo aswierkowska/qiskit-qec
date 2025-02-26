@@ -200,6 +200,14 @@ def get_stim_circuits(
                             )
                     else:  # gates/measurements acting on qubits
                         stim_circuit.append(qiskit_to_stim_dict[inst.name], qubit_indices)
+                elif inst.name == "initialize":
+                    if inst.params[0] == '0':
+                        stim_circuit.append("R", qubit_indices)
+                    elif inst.params[0] == '1':
+                        stim_circuit.append("R", qubit_indices)
+                        stim_circuit.append("X", qubit_indices)
+                    else:
+                        raise Exception("Initialization can be only done for state 0 or state 1")
                 else:
                     raise Exception("Unexpected operations: " + str([inst, qargs, cargs]))
 
