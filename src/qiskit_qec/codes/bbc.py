@@ -6,6 +6,11 @@ import sympy as sp
 import belief_propagation as bp
 import networkx as nx
 import matplotlib.pyplot as plt
+import scipy
+
+
+from bposd.css import css_code
+from ldpc import mod2
 
 class BBCode(QECCode):
 
@@ -115,11 +120,271 @@ class BBCode(QECCode):
         logicals = [list(np.where(v == 1)[0]) for v in null_vectors_mod2]
         return logicals
 
+    def find_pivot_rows(self, mat):
+        """
+        Find the pivot rows of a given matrix.
+
+        This function finds the pivot rows of the input matrix. The input matrix can be either a dense numpy array or 
+        a sparse scipy matrix. It first converts the input matrix to a CSR format if sparse, then performs row 
+        reduction to determine the pivot rows.
+
+        Parameters
+        ----------
+        mat : Union[np.ndarray, scipy.sparse.spmatrix]
+            The input matrix.
+
+        Returns
+        -------
+        numpy.ndarray
+            A 1D array of indices of the pivot rows.
+        """
+
+        # Get the shape of the matrix
+        num_rows, num_cols = mat.shape
+
+        # Track pivot rows
+        pivot_rows = []
+        pivot_col = 0  # Track column index for pivots
+
+        for row in range(num_rows):
+            # Find the first nonzero entry in this row at or after pivot_col
+            while pivot_col < num_cols and np.all(mat[row:, pivot_col] == 0):
+                pivot_col += 1  # Move to the next column
+
+            if pivot_col >= num_cols:  # If we exceed column limits, stop
+                break
+
+            # Find the row with the largest absolute value in this column (partial pivoting)
+            max_row = row + np.argmax(np.abs(mat[row:, pivot_col]))
+
+            # Swap rows if necessary
+            if max_row != row:
+                mat[[row, max_row]] = mat[[max_row, row]]
+
+            # Check if the pivot element is nonzero
+            if mat[row, pivot_col] != 0:
+                pivot_rows.append(row)  # Store this row as a pivot row
+
+                # Normalize pivot row (optional, but helps stability)
+                mat[row] = mat[row] / mat[row, pivot_col]
+
+                # Eliminate all rows below the pivot
+                for lower_row in range(row + 1, num_rows):
+                    if mat[lower_row, pivot_col] != 0:
+                        mat[lower_row] -= mat[lower_row, pivot_col] * mat[row]
+
+            pivot_col += 1  # Move to the next column
+
+        return np.array(pivot_rows, dtype=int)
+
+
+    def gf2_rank(self,matrix):
+        """
+        Computes the rank of a binary matrix over GF(2) using Gaussian elimination.
+        
+        Parameters
+        ----------
+        matrix : np.ndarray
+            A binary matrix (0s and 1s).
+
+        Returns
+        -------
+        int
+            The rank of the matrix in GF(2).
+        """
+        # Convert to binary (just in case the input has floating points)
+        matrix = np.array(matrix, dtype=int) % 2  # Ensure everything is in GF(2)
+        
+        num_rows, num_cols = matrix.shape
+        rank = 0
+        pivot_col = 0  # Tracks column index for pivots
+
+        for row in range(num_rows):
+            # Find a pivot column (first nonzero entry)
+            while pivot_col < num_cols and np.all(matrix[row:, pivot_col] == 0):
+                pivot_col += 1  # Move to the next column
+
+            if pivot_col >= num_cols:  # No more pivots possible
+                break
+
+            # Find the row with a 1 in the pivot_col and swap
+            max_row = row + np.argmax(matrix[row:, pivot_col])  # Finds first 1 in column
+            matrix[[row, max_row]] = matrix[[max_row, row]]  # Swap rows
+
+            # Zero out all other 1s in this column
+            for lower_row in range(row + 1, num_rows):
+                if matrix[lower_row, pivot_col] == 1:
+                    matrix[lower_row] ^= matrix[row]  # XOR the row (mod 2 subtraction)
+
+            rank += 1
+            pivot_col += 1  # Move to the next column
+
+        return rank
+
+
+
+    def row_echelon(self,matrix, full=False):
+
+        num_rows, num_cols = np.shape(matrix)
+
+        # Take copy of matrix if numpy (why?) and initialise transform matrix to identity
+        if isinstance(matrix, np.ndarray):
+            the_matrix = np.copy(matrix)
+            transform_matrix = np.identity(num_rows).astype(int)
+        elif isinstance(matrix, scipy.sparse.csr.csr_matrix):
+            the_matrix = matrix
+            transform_matrix = scipy.sparse.eye(num_rows, dtype="int", format="csr")
+        else:
+            raise ValueError("Unrecognised matrix type")
+
+        pivot_row = 0
+        pivot_cols = []
+
+        # Iterate over cols, for each col find a pivot (if it exists)
+        for col in range(num_cols):
+            # Select the pivot - if not in this row, swap rows to bring a 1 to this row, if possible
+            if the_matrix[pivot_row, col] != 1:
+                # Find a row with a 1 in this col
+                swap_row_index = pivot_row + np.argmax(the_matrix[pivot_row:num_rows, col])
+
+                # If an appropriate row is found, swap it with the pivot. Otherwise, all zeroes - will loop to next col
+                if the_matrix[swap_row_index, col] == 1:
+                    # Swap rows
+                    the_matrix[[swap_row_index, pivot_row]] = the_matrix[
+                        [pivot_row, swap_row_index]
+                    ]
+
+                    # Transformation matrix update to reflect this row swap
+                    transform_matrix[[swap_row_index, pivot_row]] = transform_matrix[
+                        [pivot_row, swap_row_index]
+                    ]
+
+            # If we have got a pivot, now let's ensure values below that pivot are zeros
+            if the_matrix[pivot_row, col]:
+                if not full:
+                    elimination_range = [k for k in range(pivot_row + 1, num_rows)]
+                else:
+                    elimination_range = [k for k in range(num_rows) if k != pivot_row]
+
+                # Let's zero those values below the pivot by adding our current row to their row
+                for j in elimination_range:
+                    if (
+                        the_matrix[j, col] != 0 and pivot_row != j
+                    ):  ### Do we need second condition?
+                        the_matrix[j] = (the_matrix[j] + the_matrix[pivot_row]) % 2
+
+                        # Update transformation matrix to reflect this op
+                        transform_matrix[j] = (
+                            transform_matrix[j] + transform_matrix[pivot_row]
+                        ) % 2
+
+                pivot_row += 1
+                pivot_cols.append(col)
+
+            # Exit loop once there are no more rows to search
+            if pivot_row >= num_rows:
+                break
+
+        # The rank is equal to the maximum pivot index
+        matrix_rank = pivot_row
+        row_esch_matrix = the_matrix
+
+        return [row_esch_matrix, matrix_rank, transform_matrix, pivot_cols]
+
+
+
+    def gf2_nullspace(self,matrix):
+
+        transpose = matrix.T
+        m, n = transpose.shape
+        _, matrix_rank, transform, _ = self.row_echelon(transpose)
+        nspace = transform[matrix_rank:m]
+        return nspace
+
+
+    def gf2_pivot_rows(self,matrix):
+        """
+        Finds the pivot rows of a binary matrix over GF(2) using Gaussian elimination.
+
+        Parameters
+        ----------
+        matrix : np.ndarray
+            A binary matrix (0s and 1s).
+
+        Returns
+        -------
+        np.ndarray
+            An array containing the indices of the pivot rows.
+        """
+        # Convert to binary (mod 2) to ensure correctness
+        matrix = np.array(matrix, dtype=int) % 2
+        num_rows, num_cols = matrix.shape
+
+        pivot_rows = []
+        pivot_col = 0  # Track the pivot column index
+
+        for row in range(num_rows):
+            # Find a pivot column (first nonzero entry in a column)
+            while pivot_col < num_cols and np.all(matrix[row:, pivot_col] == 0):
+                pivot_col += 1  # Move to the next column
+
+            if pivot_col >= num_cols:  # No more pivots possible
+                break
+
+            # Find the first row with a 1 in pivot_col
+            max_row = row + np.argmax(matrix[row:, pivot_col])  # Finds first 1 in column
+            matrix[[row, max_row]] = matrix[[max_row, row]]  # Swap rows
+
+            # Store the pivot row index
+            pivot_rows.append(row)
+
+            # Zero out all rows below the pivot
+            for lower_row in range(row + 1, num_rows):
+                if matrix[lower_row, pivot_col] == 1:
+                    matrix[lower_row] ^= matrix[row]  # XOR the row (mod 2)
+
+            pivot_col += 1  # Move to the next column
+
+        return np.array(pivot_rows, dtype=int)  # Return pivot row indices
+
+
+
+
+
+    def compute_logicals(self,hx,hz):
+        hx = scipy.sparse.csr_matrix(hx)
+        hz = scipy.sparse.csr_matrix(hz)
+        ker_hx = scipy.sparse.csr_matrix(self.gf2_nullspace(hx.toarray()))
+        log_stack = scipy.sparse.vstack([hz, ker_hx])
+
+        rank_hz = self.gf2_rank(hz.toarray())
+        pivots = mod2.pivot_rows(log_stack)[rank_hz:]
+        #pirvot_v2 = self.find_pivot_rows(log_stack.toarray())[rank_hz:]
+        #assert np.allclose(pivots, pirvot_v2)
+        log_ops = log_stack[pivots]
+
+        rank_hz_v2 = mod2.rank(hz)
+        assert np.allclose(rank_hz, rank_hz_v2)
+        ker_hx_v2 = self.gf2_nullspace(hx.toarray())
+        assert np.allclose(ker_hx.toarray(), ker_hx_v2)
+        pivots_v2 = self.gf2_pivot_rows(log_stack.toarray())[rank_hz:]
+        print("Pivots: ", pivots)
+        print("Pivots V2: ", pivots_v2)
+        assert np.allclose(pivots, pivots_v2)
+
+        return log_ops
+
+    
+
     def _logical_z(self, n):
         logz = self.null_space_mod2(self.H_X)
         z_log = []
         for i in logz:
             z_log.append(self.indicator_vector(i,n))
+        
+
+        z_log = self.compute_logicals(self.H_X, self.H_Z)
+        z_log = z_log.toarray()
         return z_log
 
     def _logical_x(self, n):
@@ -127,6 +392,9 @@ class BBCode(QECCode):
         x_log = []
         for i in logx:
             x_log.append(self.indicator_vector(i,n))
+
+        x_log = self.compute_logicals(self.H_Z, self.H_X)
+        x_log = x_log.toarray()
         return x_log
 
     def cyclic_shift(self, i):
@@ -307,5 +575,12 @@ if __name__ == "__main__":
     #code._logical_x(144)
     #code.show_tannergraph()
     code.verify_syndrome()
+
+    qcode = css_code(code.H_X, code.H_Z)
+    lx = qcode.lx
+    lz = qcode.lz
+
+    print("Logical X: ", lx)
+    print(" Code Logical X: ", code.logical_x)
 
 
