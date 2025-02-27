@@ -3,7 +3,7 @@ from qiskit_qec.codes.qec_code import QECCode
 import numpy as np
 import scipy.linalg as la
 import sympy as sp
-import belief_propagation as bp
+#import belief_propagation as bp
 import networkx as nx
 import matplotlib.pyplot as plt
 import scipy
@@ -119,6 +119,47 @@ class BBCode(QECCode):
         null_vectors_mod2 = [np.array(v) % 2 for v in null_vectors]
         logicals = [list(np.where(v == 1)[0]) for v in null_vectors_mod2]
         return logicals
+    
+    def Py2CsrList(self, mat):
+        """
+        Convert a matrix to a list-based CSR format.
+        """
+        if isinstance(mat, scipy.sparse.spmatrix):
+            mat = mat.tocsr()
+        return [list(mat.getrow(i).nonzero()[1]) for i in range(mat.shape[0])]
+
+    def pivot_rows(self, mat):
+        """
+        Find the pivot rows of a given matrix using row-reduction over GF(2), mimicking PLU decomposition.
+        """
+        mat_csr = self.Py2CsrList(mat)
+        row_count, col_count = mat.shape
+        pivot_rows = []
+        remaining_rows = list(range(row_count))
+        
+        for col_idx in range(col_count):
+            pivot_row_index = None
+            for i, row_idx in enumerate(remaining_rows):
+                if col_idx in mat_csr[row_idx]:
+                    pivot_row_index = i
+                    break
+            
+            if pivot_row_index is None:
+                continue
+            
+            pivot_row = remaining_rows.pop(pivot_row_index)
+            pivot_rows.append(pivot_row)
+            
+            elimination_rows = []
+            for row_idx in remaining_rows:
+                if col_idx in mat_csr[row_idx]:
+                    elimination_rows.append(row_idx)
+
+            for row_idx in elimination_rows:
+                mat_csr[row_idx] = list(set(mat_csr[row_idx]) ^ set(mat_csr[pivot_row]))
+        
+        return np.array(sorted(pivot_rows), dtype=int)
+
 
     def find_pivot_rows(self, mat):
         """
@@ -359,18 +400,19 @@ class BBCode(QECCode):
 
         rank_hz = self.gf2_rank(hz.toarray())
         pivots = mod2.pivot_rows(log_stack)[rank_hz:]
-        #pirvot_v2 = self.find_pivot_rows(log_stack.toarray())[rank_hz:]
-        #assert np.allclose(pivots, pirvot_v2)
+        pivots_v2 = self.pivot_rows(log_stack)[rank_hz:]
+        assert np.allclose(pivots, pivots_v2)
         log_ops = log_stack[pivots]
 
         rank_hz_v2 = mod2.rank(hz)
         assert np.allclose(rank_hz, rank_hz_v2)
         ker_hx_v2 = self.gf2_nullspace(hx.toarray())
         assert np.allclose(ker_hx.toarray(), ker_hx_v2)
-        pivots_v2 = self.gf2_pivot_rows(log_stack.toarray())[rank_hz:]
+        pivots_v3 = self.gf2_pivot_rows(log_stack.toarray())[rank_hz:]
         print("Pivots: ", pivots)
         print("Pivots V2: ", pivots_v2)
-        assert np.allclose(pivots, pivots_v2)
+        print("Pivots V3: ", pivots_v3)
+        assert np.allclose(pivots, pivots_v3)
 
         return log_ops
 
@@ -567,7 +609,6 @@ class BBCode(QECCode):
         )
 
         plt.show()
-
 
 if __name__ == "__main__":
     code = BBCode(72,12,6,6,6,[3,1,2],[3,1,2])
