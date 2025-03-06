@@ -592,3 +592,6 @@ class StimCodeCircuit(CodeCircuit):
 
     def is_cluster_neutral(self, nodes):
         raise NotImplementedError
+    
+    def stim_detectors(self):
+        return self.detectors, self.logicals
