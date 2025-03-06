@@ -2,11 +2,13 @@
 from qiskit_qec.circuits.code_circuit import CodeCircuit
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit_qec.codes.gross_code import GrossCode
+from qiskit_qec.codes.bbc import BBCode
+from qiskit_aer.noise import depolarizing_error
 
 class GrossCodeCircuit(CodeCircuit):
     
     #TODO: Figure out what inputs are needed
-    def __init__(self, code, T: int = 7):
+    def __init__(self, code, T: int = 7, depol_error_rate=0.0):
         super().__init__()
         self.code = code
         self._get_code_properties()
@@ -17,6 +19,7 @@ class GrossCodeCircuit(CodeCircuit):
         self.noisy_circuit = {}
         states = ["0", "1"]
         self.basis = "z"
+        
 
         #add one point we need that
         self.qc = QuantumCircuit()
@@ -34,6 +37,10 @@ class GrossCodeCircuit(CodeCircuit):
         self.qc.add_register(self.qr_left_right)
         self.qc.add_register(self.qr_Z)
         self.qc.add_register(self.cr_final)
+
+        if depol_error_rate > 0.0:
+            self.depol_error = depolarizing_error(depol_error_rate,1)
+            self.apply_depol_error()
 
         self.connectivity_dict_L = {}
         self.connectivity_dict_R = {}
@@ -88,16 +95,21 @@ class GrossCodeCircuit(CodeCircuit):
             self.connectivity_dict_L[i] = set([])
             self.connectivity_dict_R[i] = set([])
 
+    def apply_depol_error(self):
+        for qreg in self.qc.qregs:
+            for q in qreg:
+                self.qc.append(self.depol_error, [q])
 
     #prpoably we need these functions
     #all thesApply a logical Z gate to the code.e are listed in the syndrome measurenemnt
     def CNOT(self, c, t):
         """CNOT with control qubit c and taget qubit t"""
         self.qc.cx(c, t)
+        #self.qc.id(c)
 
     def InitX(self,q):
         """Initialize qubit q in the state |+> = (|0> + |1>)/sqrt(2)"""
-        self.qc.initialize('0',q)
+        #self.qc.initialize('0',q)
         self.qc.h(q)
 
 
@@ -106,24 +118,25 @@ class GrossCodeCircuit(CodeCircuit):
         Qubits are already initiliazed to |0> in qiskit
         But mabye for second round we need to do this?
         """
-        self.qc.initialize('0',q)
+        #self.qc.initialize('0',q)
         pass
 
     def MeasX(self,q, c):
         """Measure qubit q in the X basis, |+> or |->"""
         self.qc.h(q)
-        self.qc.measure(q, c) # Figure out how to do this
+        self.qc.measure(q, c)
         self.qc.reset(q)
 
     def MeasZ(self,q, c):
         """Measure qubit q in the Z basis, |0> or |1>"""
-        
-        self.qc.measure(q, c) # Figure out how to do this
+        self.qc.measure(q, c)
         self.qc.reset(q)
         pass
 
     def Idle(self,q):
         """Idle operation, Identity on qubit q"""
+        self.qc.id(q)
+        #self.qc.h(q)
         pass
 
     #helper
@@ -136,7 +149,8 @@ class GrossCodeCircuit(CodeCircuit):
     
     def add_barrier(self):
         """Add a barrier to the circuit"""
-        self.qc.barrier()
+        #self.qc.barrier()
+        pass
 
     def depth_8_syndrome_measurement(self,t):
         """
@@ -147,17 +161,14 @@ class GrossCodeCircuit(CodeCircuit):
         self.qc.add_register(cr_z)
 
         reg_X = f"round_{t}_x_bits"
-        #self.qc.h(q) is this necessary?
         cr_x = ClassicalRegister(int(self.n/2), name=reg_X)
         self.qc.add_register(cr_x)
 
         #Round 1
         for i in range(int(self.n/2)):
-            #if self._get_j(self.A[0].transpose(), i) == R: print("R connects to Z: ", i)
-
             self.InitX(self.qr_X[i])
             self.CNOT(self.qr_left_right[self._get_j(self.A[0].transpose(), i) + self.n_half], self.qr_Z[i])
-            self.Idle(self.qr_left_right[i])
+            #self.Idle(self.qr_left_right[i])
 
             self.connectivity_dict_R[i].add(self._get_j(self.A[0].transpose(), i))
         
@@ -165,9 +176,6 @@ class GrossCodeCircuit(CodeCircuit):
 
         #Round 2
         for i in range(int(self.n/2)):
-            #if self._get_j(self.A[1], i) == L: print("L connects to X: ", i)
-            #if self._get_j(self.A[2].transpose(), i) == R: print("R connects to Z: ", i)
-                
             self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.A[1],i )])
             self.CNOT(self.qr_left_right[self._get_j(self.A[2].transpose(),i) + self.n_half], self.qr_Z[i])
 
@@ -178,9 +186,6 @@ class GrossCodeCircuit(CodeCircuit):
 
         #Round 3
         for i in range(int(self.n/2)):
-            #if self._get_j(self.B[1], i) == R: print("R connects to X: ", i)
-            #if self._get_j(self.B[0].transpose(), i) == L: print("L connects to Z: ", i)
-
             self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.B[1],i) + self.n_half])
             self.CNOT(self.qr_left_right[self._get_j(self.B[0].transpose(), i)], self.qr_Z[i])
 
@@ -191,9 +196,6 @@ class GrossCodeCircuit(CodeCircuit):
 
         #Round 4
         for i in range(int(self.n/2)):
-            #if self._get_j(self.B[0], i) == R: print("R connects to X: ", i)
-            #if self._get_j(self.B[1].transpose(), i) == L: print("L connects to Z: ", i)
-
             self.CNOT(self.qr_X[i], self.qr_left_right[self._get_j(self.B[0], i) + self.n_half])
             self.CNOT(self.qr_left_right[self._get_j(self.B[1].transpose(), i)], self.qr_Z[i])
 
@@ -244,8 +246,8 @@ class GrossCodeCircuit(CodeCircuit):
         for i in range(int(self.n/2)):
             self.MeasX(self.qr_X[i], cr_x[i])
             self.InitZ(self.qr_Z[i])
-            #self.Idle(self.qr_left[i])
-            #self.Idle(self.qr_right[i])
+            self.Idle(self.qr_left_right[i])
+            self.Idle(self.qr_left_right[i + self.n_half])
 
         self.add_barrier()
 
@@ -254,8 +256,8 @@ class GrossCodeCircuit(CodeCircuit):
         """
         Multiple syndrome measurement cycle circuit
         """
-        if self.basis == "x":
-                self.qc.h(self.qr_left_right)
+        #if self.basis == "x":
+        #        self.qc.h(self.qr_left_right)
 
         for i in range(T):
             self.qc.barrier()
@@ -399,8 +401,8 @@ class GrossCodeCircuit(CodeCircuit):
 
 
 if __name__ == "__main__":
-    code = GrossCode()
-    circuit = GrossCodeCircuit(code)
-    #circuit.qc.draw(output='mpl', filename='gross_code_circuit.png', vertical_compression='high', scale=0.3, fold=500)
+    code = BBCode(90,8,10,15,3,[9,1,2],[0,2,7])
+    circuit = GrossCodeCircuit(code, T=1)
+    circuit.qc.draw(output='mpl', filename='bbc_90_8_10_circuit.png', vertical_compression='high', scale=0.3, fold=500)
     circuit.verify_connectivity()
     pass

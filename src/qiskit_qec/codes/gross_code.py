@@ -118,6 +118,7 @@ class GrossCode(QECCode):
         for i in range(2, self.m):
             y_m = (y_m @ y) % 2
         assert np.allclose(y_m, np.eye(self.l*self.m, dtype=int))
+        assert np.allclose(x_l, y_m)
         #A = A1 + A2 + A3, B = B1 + B2 + B3
         #A = x^3 + y + y^2, B = x + x^2 + y^3
 
