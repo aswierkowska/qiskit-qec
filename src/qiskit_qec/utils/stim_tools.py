@@ -96,6 +96,8 @@ def get_stim_circuits(
             "reset": "R",
             "measure": "M",
             "barrier": "TICK",
+            # CUSTOM SHUTTLING INSTRUCTION:
+            "shuttling_swap" : "SHUTTLING_SWAP",
         }
         pauli_error_1_stim_order = {
             "id": 0,
